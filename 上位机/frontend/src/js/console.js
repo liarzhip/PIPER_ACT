@@ -1,3 +1,4 @@
+import {setupStageLayouts} from './stage-layout.js';
 import {createJointChart, initCaptureCharts, updateCaptureCharts, drawCaptureCharts} from './capture-chart.js';
 const $ = id => document.getElementById(id);
 const apiHeaders = {'Content-Type':'application/json','X-Console-Request':'1'};
@@ -23,6 +24,7 @@ function setPill(el, state, text) {
   el.textContent=text; el.className='pill '+(state==='error'?'error':['running','starting','recording','connecting'].includes(state)?'busy':['ready','completed'].includes(state)?'good':state==='stopping'?'warn':'');
 }
 function route() {
+  window.scrollTo(0,0);
   const wanted=(location.hash||'#tasks').slice(1); currentPage=pageMeta[wanted]?wanted:'tasks';
   document.querySelectorAll('.page').forEach(el=>el.hidden=el.id!==`page-${currentPage}`);
   document.querySelectorAll('[data-page]').forEach(el=>el.classList.toggle('active',el.dataset.page===currentPage));
@@ -31,6 +33,7 @@ function route() {
   if(currentPage==='capture') requestAnimationFrame(drawCaptureCharts);
   if(currentPage==='execution') requestAnimationFrame(()=>executionChart.draw());
 }
+setupStageLayouts();
 window.addEventListener('hashchange',route); route();
 
 function selectedTask(){return tasks.find(t=>t.selected) || tasks[0];}
@@ -152,7 +155,7 @@ function renderExecution(job){
     executionChart.update({dataset_dir:session,state:'ready',worker_active:true,qpos_hz:1,qpos:runtime.qpos,action:runtime.command || []}, runtime.sample_time);
   }
 
-  setPill($('executionState'),job.state,jobLabels[job.state]||job.state);const active=['starting','running','stopping'].includes(job.state);$('startExecution').disabled=active||!selectedTask();$('stopExecution').disabled=!['starting','running'].includes(job.state);$('executionForm').querySelectorAll('input,select').forEach(i=>i.disabled=active);
+  setPill($('executionState'),job.state,jobLabels[job.state]||job.state);const active=['starting','running','stopping'].includes(job.state);$('startExecution').disabled=active||!selectedTask();$('stopExecution').disabled=!['starting','running'].includes(job.state);Array.from($('executionForm').elements).filter(i=>['INPUT','SELECT'].includes(i.tagName)).forEach(i=>i.disabled=active);
   const m=job.latest||{};$('wristAge').textContent=formatPlain(m.wrist_age_ms);$('externalAge').textContent=formatPlain(m.external_age_ms);$('syncDelta').textContent=formatPlain(m.sync_delta_ms);$('inferMs').textContent=formatPlain(m.inference_ms);$('inferHz').textContent=formatPlain(m.inference_hz);$('servoHz').textContent=formatPlain(m.servo_hz);$('execAge').textContent=formatPlain(m.image_age_ms ?? (Number.isFinite(m.wrist_age_ms)&&Number.isFinite(m.external_age_ms)?Math.max(m.wrist_age_ms,m.external_age_ms):undefined));$('executionStep').textContent=m.step==null?'STEP —':`STEP ${m.step}`;$('executionModeLabel').textContent=m.mode||($('executionForm').elements.controlMode.value==='control'?'CONTROL':'DRY-RUN');
   $('executionLog').textContent=job.logs?.length?job.logs.join('\n'):(job.error||'等待启动执行。');$('executionLog').scrollTop=$('executionLog').scrollHeight;setPill($('executionCameraBadge'),job.has_preview?'ready':job.state,job.has_preview?'实时画面':active?'正在初始化':'等待启动');
   if(!job.has_preview&&!active){$('executionImage').hidden=true;$('executionCameraEmpty').hidden=false;}
