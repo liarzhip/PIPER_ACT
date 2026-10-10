@@ -1,0 +1,753 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#16324f" />
+    <title>PiPER ACT · 任务工作台</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2316324f'/%3E%3Cpath d='M9 24V8h9a5 5 0 010 10h-5v6' fill='none' stroke='%234ad7c8' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="/src/css/console.css" />
+  </head>
+  <body>
+    <aside class="sidebar">
+      <a class="brand" href="#tasks"
+        ><span class="brand-mark">P</span
+        ><span
+          ><strong>PiPER ACT</strong><small>机器人学习工作台</small></span
+        ></a
+      >
+      <button id="taskSwitcher" class="task-switcher">
+        <span
+          ><small>当前任务</small
+          ><strong id="currentTaskName">正在读取…</strong></span
+        ><span>⌄</span>
+      </button>
+      <nav aria-label="主导航">
+        <a href="#tasks" data-page="tasks"
+          ><span class="nav-icon">⌂</span><span>任务中心</span></a
+        >
+        <a href="#capture" data-page="capture"
+          ><span class="nav-icon">●</span><span>数据采集</span><em>1</em></a
+        >
+        <a href="#training" data-page="training"
+          ><span class="nav-icon">↗</span><span>模型训练</span><em>2</em></a
+        >
+        <a href="#execution" data-page="execution"
+          ><span class="nav-icon">▶</span><span>任务执行</span><em>3</em></a
+        >
+      </nav>
+      <div class="sidebar-foot">
+        <span id="globalDot" class="status-dot"></span
+        ><span id="globalState">本地服务已连接</span
+        ><small>数据仅保存在本机</small>
+      </div>
+    </aside>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p id="pageEyebrow">WORKSPACE</p>
+          <h1 id="pageTitle">任务中心</h1>
+        </div>
+        <div class="top-actions">
+          <label class="runtime-picker"
+            ><span>Conda 环境</span
+            ><select id="runtimeEnvironment" aria-label="Conda 运行环境">
+              <option>正在检测…</option>
+            </select></label
+          ><span id="environmentState" class="pill">检测依赖</span
+          ><span id="phasePill" class="pill">空闲</span
+          ><button id="openTaskModal" class="button ghost">切换任务</button>
+        </div>
+      </header>
+      <div
+        id="toast"
+        class="toast"
+        role="status"
+        aria-live="polite"
+        hidden
+      ></div>
+
+      <section id="page-tasks" class="page">
+        <div class="intro-row">
+          <div>
+            <h2>从一个任务开始</h2>
+            <p>每个任务拥有独立的数据集、训练结果和执行配置。</p>
+          </div>
+          <button id="newTaskTop" class="button primary">＋ 新建任务</button>
+        </div>
+        <div class="overview-grid">
+          <article class="summary-card">
+            <span class="summary-icon capture-color">●</span>
+            <div>
+              <small>已采集数据</small><strong id="taskEpisodes">—</strong>
+              <p>个 Episode</p>
+            </div>
+            <a href="#capture">进入采集</a>
+          </article>
+          <article class="summary-card">
+            <span class="summary-icon train-color">↗</span>
+            <div>
+              <small>模型状态</small><strong id="taskModel">—</strong>
+              <p id="taskModelHint">等待读取</p>
+            </div>
+            <a href="#training">进入训练</a>
+          </article>
+          <article class="summary-card next-card">
+            <small>建议下一步</small
+            ><strong id="nextAction">检查当前任务</strong>
+            <p id="nextActionHint">正在读取任务状态。</p>
+            <a id="nextActionLink" class="button dark" href="#capture">继续</a>
+          </article>
+        </div>
+        <div class="section-heading">
+          <div>
+            <h2>全部任务</h2>
+            <p>选择任务后，三个阶段都会切换到对应目录。</p>
+          </div>
+          <span id="taskCount" class="muted"></span>
+        </div>
+        <button id="refreshTasks" class="button ghost" type="button">刷新 Dataset 文件夹</button><div id="taskGrid" class="task-grid"></div>
+      </section>
+
+      <section id="page-capture" class="page" hidden>
+        <div class="stage-banner">
+          <span class="stage-number">01</span>
+          <div>
+            <strong>采集示教数据</strong>
+            <p>先连接设备并确认相机画面，再开始一段完整示教。</p>
+          </div>
+          <span id="captureState" class="pill">未连接</span>
+        </div>
+        <div class="workspace two-column">
+          <div class="main-column">
+            <article class="card camera-card">
+              <div class="card-head">
+                <div>
+                  <h2>腕部相机</h2>
+                  <p>实时 RGB 反馈</p>
+                </div>
+                <span id="cameraBadge" class="pill">等待连接</span>
+              </div>
+              <div class="camera-view">
+                <img id="liveImage" alt="腕部相机实时画面" hidden />
+                <div id="cameraEmpty" class="camera-empty">
+                  <span class="focus-frame"></span><strong>相机尚未连接</strong>
+                  <p>连接设备后可在这里调整视角和起始姿态</p>
+                </div>
+                <span id="demoWatermark" class="watermark" hidden
+                  >模拟画面 · 不用于正式训练</span
+                >
+                <div class="camera-overlay">
+                  <span id="liveResolution">WRIST CAMERA</span
+                  ><span id="actionState">ACTION —</span>
+                </div>
+              </div>
+            </article>
+            <div class="metric-grid four">
+              <div class="metric">
+                <span>采集帧数</span><strong id="count">0</strong
+                ><small>frames</small>
+              </div>
+              <div class="metric">
+                <span>录制时长</span><strong id="elapsed">0.0</strong
+                ><small>seconds</small>
+              </div>
+              <div class="metric">
+                <span>两路最大图像延迟</span><strong id="age">—</strong
+                ><small>ms</small>
+              </div>
+              <div class="metric">
+                <span>丢弃帧</span><strong id="skipped">0</strong
+                ><small>frames</small>
+              </div>
+            </div>
+            <article class="card joint-card">
+              <div class="card-head">
+                <div>
+                  <h2>关节反馈变化曲线</h2>
+                  <p>最近 60 秒 · 横轴为连接后的时间 · 约 0.7 秒刷新</p>
+                </div>
+                <span class="joint-legend"><span>实线：实际反馈</span><span>虚线：示教指令</span></span>
+              </div>
+              <div id="jointCharts" class="joint-trends"></div>
+            </article>
+          </div>
+          <aside class="control-column">
+            <form id="configForm" class="card form-card">
+              <div class="form-grid path-parameters"><label class="field wide"><span>数据集目录</span><input name="dataset_dir" type="text" value=""><small>dataset_dir</small></label><p class="parameter-note wide">已按当前任务自动填写，可修改为其他模型目录；启动时保存修改，不搬动已有文件。</p></div><div class="card-head">
+                <div>
+                  <h2>采集参数</h2>
+                  <p>连接后参数将锁定</p>
+                </div>
+              </div>
+              <fieldset id="configFields">
+                <label class="field wide"
+                  ><span>数据来源</span
+                  ><select name="mode">
+                    <option value="hardware">真实设备 · PiPER-X + DaBai</option>
+                    <option value="demo">模拟演示 · 不写入正式数据</option>
+                  </select></label
+                >
+                <div class="form-grid capture-form-grid">
+                  <label class="field"
+                    ><span>CAN 接口</span
+                    ><input name="can" value="can0" required /></label
+                  ><label class="field"
+                    ><span>采样频率</span>
+                    <div class="input-unit">
+                      <input
+                        name="fps"
+                        type="number"
+                        value="20"
+                        min="1"
+                        max="120"
+                        required
+                      /><i>Hz</i>
+                    </div></label
+                  ><label class="field"
+                    ><span>腕部相机宽度</span>
+                    <div class="input-unit">
+                      <input
+                        name="wrist_width"
+                        type="number"
+                        value="640"
+                        min="1"
+                        max="4096"
+                        required
+                      /><i>px</i>
+                    </div></label
+                  ><label class="field"
+                    ><span>腕部相机高度</span>
+                    <div class="input-unit">
+                      <input
+                        name="wrist_height"
+                        type="number"
+                        value="0"
+                        min="0"
+                        max="2160"
+                        required
+                      /><i>px</i>
+                    </div>
+                    <small>0 表示自动选择</small></label
+                  ><label class="field"
+                    ><span>相机帧率</span>
+                    <div class="input-unit">
+                      <input
+                        name="wrist_fps"
+                        type="number"
+                        value="30"
+                        min="1"
+                        max="120"
+                        required
+                      /><i>fps</i>
+                    </div></label
+                  ><label class="field"
+                    ><span>最大图像延迟</span>
+                    <div class="input-unit">
+                      <input
+                        name="max_image_age"
+                        type="number"
+                        value="0.10"
+                        min="0.001"
+                        max="5"
+                        step="0.001"
+                        required
+                      /><i>s</i>
+                    </div></label
+                  ><label class="field"
+                    ><span>自动停止</span>
+                    <div class="input-unit">
+                      <input
+                        name="duration"
+                        type="number"
+                        value="0"
+                        min="0"
+                        max="86400"
+                        required
+                      /><i>s</i>
+                    </div>
+                    <small>0 表示手动停止</small></label
+                  >
+                </div>
+                <details>
+                  <summary>高级连接参数</summary>
+                  <label class="field"
+                    ><span>初始化超时</span>
+                    <div class="input-unit">
+                      <input
+                        name="startup_timeout"
+                        type="number"
+                        value="15"
+                        min="1"
+                        max="120"
+                      /><i>s</i>
+                    </div></label
+                  ><label class="check"
+                    ><input name="judge_flag" type="checkbox" checked /><span
+                      >启用 CAN 接口检查</span
+                    ></label
+                  >
+                </details>
+              <details open class="extended-parameters"><summary>RGB-D 与文件参数</summary><div class="form-grid"><label class="field "><span>有效深度下限 / mm</span><input name="wrist_depth_min_mm" type="number" value="150" step="any" min="1" max="10000" required><small>wrist_depth_min_mm</small></label><label class="field "><span>有效深度上限 / mm</span><input name="wrist_depth_max_mm" type="number" value="1500" step="any" min="1" max="10000" required><small>wrist_depth_max_mm</small></label><label class="check wide"><input type="checkbox" name="wrist_depth_align" checked><span>深度对齐 RGB <small>wrist_depth_align</small></span></label><label class="field wide"><span>CAN 后端</span><input name="can_backend" type="text" value="agx_cando" required><small>can_backend</small></label><label class="field "><span>Episode 编号（留空自动）</span><input name="episode_index" type="number" value="" step="1" min="0" max="999999999"><small>episode_index</small></label></div></details><details open class="extended-parameters"><summary>V7 外部 RealSense 与双相机同步</summary><p class="parameter-note">腕部 Orbbec + 外部 RealSense；两路图像宽高须一致。</p><div class="form-grid"><label class="field"><span>外部相机宽度</span><input name="external_width" type="number" value="640" step="any" min="0"><small>external_width</small></label><label class="field"><span>外部相机高度</span><input name="external_height" type="number" value="480" step="any" min="0"><small>external_height</small></label><label class="field"><span>外部相机帧率</span><input name="external_fps" type="number" value="30" step="any" min="0"><small>external_fps</small></label><label class="field"><span>RealSense 序列号（可留空）</span><input name="external_serial" type="text" value=""><small>external_serial</small></label><label class="field"><span>双相机时间差上限 / s</span><input name="max_camera_sync_delta" type="number" value="0.05" step="any" min="0"><small>max_camera_sync_delta</small></label><label class="field"><span>外部深度下限 / mm</span><input name="external_depth_min_mm" type="number" value="250" step="any" min="0"><small>external_depth_min_mm</small></label><label class="field"><span>外部深度上限 / mm</span><input name="external_depth_max_mm" type="number" value="3000" step="any" min="0"><small>external_depth_max_mm</small></label></div></details></fieldset>
+              <div class="button-row">
+                <button id="connect" class="button primary" type="submit">
+                  连接并预览</button
+                ><button
+                  id="disconnect"
+                  class="button ghost"
+                  type="button"
+                  disabled
+                >
+                  断开
+                </button>
+              </div>
+            </form>
+            <article class="card action-card">
+              <span class="step-kicker">RECORDING</span>
+              <h2 id="recordingTitle">准备采集</h2>
+              <p id="recordingHint">
+                连接后移动一次主臂，等待相机和从臂反馈就绪。
+              </p>
+              <button id="start" class="button record" disabled>
+                ● 开始录制</button
+              ><button id="stop" class="button stop" disabled>
+                ■ 停止并保存
+              </button>
+              <div class="path-row">
+                <span>保存至</span><code id="datasetPath">—</code>
+              </div>
+              <p id="saved" class="saved-note">尚未保存新的 Episode</p>
+            </article>
+          </aside>
+        </div>
+      </section>
+
+      <section id="page-training" class="page" hidden>
+        <div class="stage-banner">
+          <span class="stage-number">02</span>
+          <div>
+            <strong>训练 ACT 模型</strong>
+            <p>每个 epoch 实时显示 Loss、L1 和 KL，训练结果保存到当前任务。</p>
+          </div>
+          <span id="trainingState" class="pill">尚未开始</span>
+        </div>
+        <div class="workspace two-column training-layout">
+          <div class="main-column">
+            <div class="metric-grid four">
+              <div class="metric">
+                <span>训练进度</span><strong id="epochMetric">0 / 0</strong
+                ><small>epoch</small>
+              </div>
+              <div class="metric accent-blue">
+                <span>Loss</span><strong id="lossMetric">—</strong
+                ><small>train</small>
+              </div>
+              <div class="metric accent-green">
+                <span>L1</span><strong id="l1Metric">—</strong
+                ><small>train</small>
+              </div>
+              <div class="metric accent-orange">
+                <span>KL</span><strong id="klMetric">—</strong
+                ><small>train</small>
+              </div>
+            </div>
+            <article class="card chart-card">
+              <div class="card-head">
+                <div>
+                  <h2>训练过程</h2>
+                  <p>移动鼠标查看对应 epoch 的指标</p>
+                </div>
+                <div class="chart-legend">
+                  <span class="loss">Loss</span><span class="l1">L1</span
+                  ><span class="kl">KL</span>
+                </div>
+              </div>
+              <div class="chart-wrap">
+                <canvas id="trainingChart" aria-label="训练指标曲线"></canvas>
+                <div id="chartTooltip" class="chart-tooltip" hidden></div>
+                <div id="chartEmpty" class="chart-empty">
+                  <strong>曲线会在训练开始后出现</strong>
+                  <p>每完成一个 epoch，图表会自动更新。</p>
+                </div>
+              </div>
+              <div class="progress-track">
+                <span id="trainingProgress"></span>
+              </div>
+            </article>
+            <article class="card log-card">
+              <div class="card-head">
+                <div>
+                  <h2>运行日志</h2>
+                  <p>最近的训练输出</p>
+                </div>
+                <button id="toggleTrainLog" class="button ghost small">
+                  展开
+                </button>
+              </div>
+              <pre id="trainingLog" class="collapsed">等待开始训练。</pre>
+            </article>
+          </div>
+          <aside class="control-column">
+            <form id="trainingForm" class="card form-card">
+              <div class="form-grid path-parameters"><label class="field wide"><span>数据集目录</span><input name="dataset_dir" type="text" value=""><small>dataset_dir</small></label><label class="field wide"><span>模型目录</span><input name="ckpt_dir" type="text" value=""><small>ckpt_dir</small></label><p class="parameter-note wide">已根据当前任务自动填写，可直接修改为其他绝对路径。启动训练时保存修改，不搬动已有文件。</p></div><div class="card-head">
+                <div>
+                  <h2>训练参数</h2>
+                  <p>默认数值对齐实际命令；展开可调整完整参数</p>
+                </div>
+              </div>
+              <div class="form-grid">
+                <label class="field"
+                  ><span>训练轮数</span
+                  ><input
+                    name="num_epochs"
+                    type="number"
+                    value="100" step="1" min="1" max="100000" required /></label
+                ><label class="field"
+                  ><span>批量大小</span
+                  ><input
+                    name="batch_size"
+                    type="number"
+                    value="10" step="1" min="1" max="1024" required /></label
+                ><label class="field"
+                  ><span>动作块长度</span
+                  ><input
+                    name="chunk_size"
+                    type="number"
+                    value="20" step="1" min="1" max="1000" required /></label
+                ><label class="field"
+                  ><span>KL 权重</span
+                  ><input
+                    name="kl_weight"
+                    type="number"
+                    value="10.0" step="any" min="0" max="100000" required /></label
+                ><label class="field wide"
+                  ><span>学习率</span
+                  ><input
+                    name="lr"
+                    type="number"
+                    value="1e-05" step="any" min="1e-09" max="1" required /></label>
+              </div>
+              <details>
+                <summary>模型与性能参数</summary>
+                <div class="form-grid">
+                  <label class="field"
+                    ><span>隐藏维度</span
+                    ><input
+                      name="hidden_dim"
+                      type="number"
+                      value="512" step="1" min="8" max="8192" required /></label
+                  ><label class="field"
+                    ><span>FFN 维度</span
+                    ><input
+                      name="dim_feedforward"
+                      type="number"
+                      value="3200" step="1" min="8" max="65536" required /></label
+                  ><label class="field"
+                    ><span>Backbone 学习率</span
+                    ><input
+                      name="lr_backbone"
+                      type="number"
+                      value="1e-05" step="any" min="1e-09" max="1" required /></label
+                  ><label class="field"
+                    ><span>数据线程</span
+                    ><input
+                      name="num_workers"
+                      type="number"
+                      value="0" step="1" min="0" max="64" required /></label
+                  ><label class="field"
+                    ><span>保存间隔</span
+                    ><input
+                      name="save_every"
+                      type="number"
+                      value="10" step="1" min="0" max="100000" required /></label
+                  ><label class="field"
+                    ><span>绘图间隔</span
+                    ><input
+                      name="plot_every"
+                      type="number"
+                      value="10" step="1" min="0" max="100000" required /></label
+                  ><label class="field wide"
+                    ><span>相机顺序（空格分隔）</span
+                    ><input name="camera_names" value="wrist external"
+                  /></label>
+                </div>
+              </details>
+              <details open class="extended-parameters"><summary>全局记忆、采样与模型结构</summary><div class="form-grid"><label class="field "><span>状态维度</span><input name="state_dim" type="number" value="7" step="1" min="7" max="7" required><small>state_dim</small></label><label class="field wide"><span>深度统计文件（留空自动）</span><input name="depth_stats_json" type="text" value=""><small>depth_stats_json</small></label><label class="field "><span>训练采样步长</span><input name="sample_stride" type="number" value="10" step="1" min="1" max="100000" required><small>sample_stride</small></label><label class="field "><span>全局历史步长</span><input name="global_history_stride" type="number" value="1" step="1" min="1" max="100000" required><small>global_history_stride</small></label><label class="field "><span>全局记忆隐藏维度</span><input name="global_hidden_dim" type="number" value="128" step="1" min="1" max="8192" required><small>global_hidden_dim</small></label><label class="field "><span>全局残差比例</span><input name="global_residual_scale" type="number" value="1.0" step="any" min="0" max="100" required><small>global_residual_scale</small></label><label class="field "><span>编码器层数</span><input name="enc_layers" type="number" value="4" step="1" min="1" max="100" required><small>enc_layers</small></label><label class="field "><span>解码器层数</span><input name="dec_layers" type="number" value="7" step="1" min="1" max="100" required><small>dec_layers</small></label><label class="field "><span>注意力头数</span><input name="nheads" type="number" value="8" step="1" min="1" max="128" required><small>nheads</small></label><label class="field wide"><span>视觉骨干网络</span><input name="backbone" type="text" value="resnet18" required><small>backbone</small></label><label class="field "><span>训练集比例</span><input name="train_ratio" type="number" value="0.8" step="any" min="0.01" max="0.99" required><small>train_ratio</small></label><label class="field "><span>随机种子</span><input name="seed" type="number" value="0" step="1" min="0" max="4294967295" required><small>seed</small></label><label class="field "><span>最大 Episode 数（留空为全部）</span><input name="max_episodes" type="number" value="" step="1" min="2" max="1000000"><small>max_episodes</small></label></div></details><div class="form-summary">
+                <span>数据目录</span><code id="trainDatasetPath">—</code
+                ><span>模型目录</span><code id="trainCkptPath">—</code>
+              </div>
+              <button id="startTraining" class="button primary" type="submit">
+                开始训练</button
+              ><button
+                id="stopTraining"
+                class="button stop"
+                type="button"
+                disabled
+              >
+                停止训练
+              </button>
+            </form>
+          </aside>
+        </div>
+      </section>
+
+      <section id="page-execution" class="page" hidden>
+        <div class="stage-banner">
+          <span class="stage-number">03</span>
+          <div>
+            <strong>执行模型任务</strong>
+            <p>先使用仅推理模式检查画面和模型输出，再谨慎启用机械臂控制。</p>
+          </div>
+          <span id="executionState" class="pill">尚未开始</span>
+        </div>
+        <div class="workspace two-column">
+          <div class="main-column">
+            <article class="card camera-card">
+              <div class="card-head">
+                <div>
+                  <h2>执行相机</h2>
+                  <p>实时画面与运行状态叠加</p>
+                </div>
+                <span id="executionCameraBadge" class="pill">等待启动</span>
+              </div>
+              <div class="camera-view">
+                <img id="executionImage" alt="任务执行实时相机画面" hidden />
+                <div id="executionCameraEmpty" class="camera-empty">
+                  <span class="focus-frame"></span><strong>等待执行进程</strong>
+                  <p>启动后将在这里显示相机反馈</p>
+                </div>
+                <div class="camera-overlay">
+                  <span id="executionModeLabel">DRY-RUN</span
+                  ><span id="executionStep">STEP —</span>
+                </div>
+              </div>
+            </article>
+            <div class="metric-grid four">
+              <div class="metric">
+                <span>推理耗时</span><strong id="inferMs">—</strong
+                ><small>ms</small>
+              </div>
+              <div class="metric">
+                <span>推理频率</span><strong id="inferHz">—</strong
+                ><small>Hz</small>
+              </div>
+              <div class="metric">
+                <span>伺服频率</span><strong id="servoHz">—</strong
+                ><small>Hz</small>
+              </div>
+              <div class="metric">
+                <span>两路最大图像延迟</span><strong id="execAge">—</strong
+                ><small>ms</small>
+              </div>
+            </div>
+            <article class="card joint-card">
+              <div class="card-head"><div><h2>关节与夹爪变化曲线</h2><p>最近 60 秒 · 左轴关节 rad，右轴夹爪 m</p></div><span class="joint-legend"><span>实线：实际反馈</span><span>虚线：平滑目标（仅推理时不下发）</span></span></div>
+              <div id="executionJointCharts" class="joint-trends"></div>
+            </article>
+            <article class="card log-card">
+              <div class="card-head">
+                <div>
+                  <h2>执行日志</h2>
+                  <p>初始化、安全检查与运行状态</p>
+                </div>
+              </div>
+              <pre id="executionLog">等待启动执行。</pre>
+            </article>
+          </div>
+          <aside class="control-column">
+            <p class="parameter-note">V7 双 RGB-D · 腕部延迟：<strong id="wristAge">—</strong> ms · 外部延迟：<strong id="externalAge">—</strong> ms · 同步差：<strong id="syncDelta">—</strong> ms</p><form id="executionForm" class="card form-card">
+              <div class="form-grid path-parameters"><label class="field wide"><span>模型目录</span><input name="ckpt_dir" type="text" value=""><small>ckpt_dir</small></label><p class="parameter-note wide">已按当前任务自动填写，可修改为其他模型目录；启动时保存修改，不搬动已有文件。</p></div><div class="card-head">
+                <div>
+                  <h2>执行参数</h2>
+                  <p>默认仅推理，不控制机械臂</p>
+                </div>
+              </div>
+              <div class="mode-picker" role="radiogroup">
+                <label
+                  ><input
+                    type="radio"
+                    name="controlMode"
+                    value="dry"
+                    checked
+                  /><span
+                    ><strong>仅推理</strong><small>推荐先运行</small></span
+                  ></label
+                ><label
+                  ><input
+                    type="radio"
+                    name="controlMode"
+                    value="control"
+                  /><span
+                    ><strong>真实控制</strong><small>机械臂将运动</small></span
+                  ></label
+                >
+              </div>
+              <div class="form-grid">
+                <label class="field wide"
+                  ><span>模型文件</span
+                  ><input name="ckpt_name" value="policy_best.ckpt" /></label
+                ><label class="field"
+                  ><span>控制频率</span>
+                  <div class="input-unit">
+                    <input
+                      name="control_hz"
+                      type="number"
+                      value="20.0" step="any" min="1" max="120" required /><i>Hz</i>
+                  </div></label
+                ><label class="field"
+                  ><span>速度百分比</span>
+                  <div class="input-unit">
+                    <input
+                      name="speed_percent"
+                      type="number"
+                      value="15" step="1" min="0" max="100" required /><i>%</i>
+                  </div></label
+                ><label class="field"
+                  ><span>最大运行时间</span>
+                  <div class="input-unit">
+                    <input
+                      name="max_seconds"
+                      type="number"
+                      value="0" step="any" min="0" max="86400" required /><i>s</i>
+                  </div></label
+                ><label class="field"
+                  ><span>CAN 通道</span><input name="can_channel" value="0"
+                /></label>
+              </div>
+              <details>
+                <summary>平滑、安全与相机参数</summary>
+                <div class="form-grid">
+                  <label class="field"
+                    ><span>CPV 频率</span
+                    ><input name="cpv_hz" type="number" value="50.0" step="any" min="1" max="200" required /></label
+                  ><label class="field"
+                    ><span>单步关节上限 °</span
+                    ><input
+                      name="max_joint_step_deg"
+                      type="number"
+                      value="1.0" step="any" min="0.001" max="30" required /></label
+                  ><label class="field"
+                    ><span>关节 EMA</span
+                    ><input
+                      name="joint_alpha"
+                      type="number"
+                      value="0.2" step="any" min="0" max="1" required /></label
+                  ><label class="field"
+                    ><span>夹爪 EMA</span
+                    ><input
+                      name="gripper_alpha"
+                      type="number"
+                      value="0.15" step="any" min="0" max="1" required /></label
+                  ><label class="field"
+                    ><span>最大速度 °/s</span
+                    ><input
+                      name="max_joint_vel_deg_s"
+                      type="number"
+                      value="15.0" step="any" min="0.1" max="360" required /></label
+                  ><label class="field"
+                    ><span>最大加速度 °/s²</span
+                    ><input
+                      name="max_joint_acc_deg_s2"
+                      type="number"
+                      value="60.0" step="any" min="0.1" max="2000" required /></label
+                  ><label class="field"
+                    ><span>腕部相机宽度</span
+                    ><input
+                      name="wrist_width"
+                      type="number"
+                      value="640" step="1" min="1" max="4096" required /></label
+                  ><label class="field"
+                    ><span>腕部相机高度</span
+                    ><input
+                      name="wrist_height"
+                      type="number"
+                      value="480" step="1" min="1" max="2160" required /></label
+                  ><label class="field"
+                    ><span>相机帧率</span
+                    ><input name="wrist_fps" type="number" value="30" step="1" min="1" max="120" required /></label
+                  ><label class="field"
+                    ><span>图像延迟阈值</span
+                    ><input
+                      name="max_image_age"
+                      type="number"
+                      value="0.1" step="any" min="0.001" max="5" required /></label
+                  ><label class="field"
+                    ><span>聚合系数</span
+                    ><input
+                      name="temporal_k"
+                      type="number"
+                      value="0.01" step="any" min="0" max="10" required /></label
+                  ><label class="field"
+                    ><span>预热次数</span
+                    ><input name="warmup" type="number" value="5" step="1" min="0" max="1000" required /></label
+                  ><label class="check wide"
+                    ><input name="temporal_agg" type="checkbox" checked /><span
+                      >启用时序聚合</span
+                    ></label
+                  >
+                </div>
+              </details>
+              <details open class="extended-parameters"><summary>CPV、目标保护与夹爪参数</summary><div class="form-grid"><label class="field wide"><span>固件版本</span><select name="firmware"><option value="auto" selected>auto</option><option value="default" >default</option><option value="v183" >v183</option><option value="v188" >v188</option><option value="v189" >v189</option></select><small>firmware</small></label><label class="field "><span>夹爪力度</span><input name="gripper_force" type="number" value="1.0" step="any" min="0" max="10" required><small>gripper_force</small></label><label class="field "><span>CPV CV 系数</span><input name="cpv_cv" type="number" value="0.3" step="any" min="0.001" max="10" required><small>cpv_cv</small></label><label class="check wide"><input type="checkbox" name="configure_cpv_cv" checked><span>启动时配置 CPV CV <small>configure_cpv_cv</small></span></label><label class="check wide"><input type="checkbox" name="wrist_depth_align" checked><span>深度对齐 RGB <small>wrist_depth_align</small></span></label><label class="field "><span>夹爪单步上限 / m</span><input name="max_gripper_step_m" type="number" value="0.005" step="any" min="1e-06" max="0.1" required><small>max_gripper_step_m</small></label><label class="field "><span>夹爪最小开度 / m</span><input name="gripper_min_m" type="number" value="0.0" step="any" min="0" max="0.1" required><small>gripper_min_m</small></label><label class="field "><span>夹爪最大开度 / m</span><input name="gripper_max_m" type="number" value="0.1" step="any" min="0" max="0.1" required><small>gripper_max_m</small></label><label class="field "><span>关节死区 / °</span><input name="joint_deadband_deg" type="number" value="0.0" step="any" min="0" max="30" required><small>joint_deadband_deg</small></label><label class="field "><span>夹爪死区 / mm</span><input name="gripper_deadband_mm" type="number" value="0.5" step="any" min="0" max="100" required><small>gripper_deadband_mm</small></label><label class="field "><span>最大跟踪误差 / °</span><input name="max_tracking_error_deg" type="number" value="5.0" step="any" min="0.001" max="180" required><small>max_tracking_error_deg</small></label><label class="field "><span>目标超时 / s</span><input name="target_timeout" type="number" value="0.3" step="any" min="0.001" max="30" required><small>target_timeout</small></label><label class="field "><span>状态偏差上限（0 关闭）</span><input name="max_qpos_z" type="number" value="12.0" step="any" min="0" max="1000" required><small>max_qpos_z</small></label><label class="field "><span>初始化超时 / s</span><input name="startup_timeout" type="number" value="10.0" step="any" min="1" max="120" required><small>startup_timeout</small></label></div></details><details open class="extended-parameters"><summary>V7 外部 RealSense 与双相机同步</summary><p class="parameter-note">腕部 Orbbec + 外部 RealSense；两路图像宽高须一致。</p><div class="form-grid"><label class="field"><span>外部相机宽度</span><input name="external_width" type="number" value="640" step="any" min="0"><small>external_width</small></label><label class="field"><span>外部相机高度</span><input name="external_height" type="number" value="480" step="any" min="0"><small>external_height</small></label><label class="field"><span>外部相机帧率</span><input name="external_fps" type="number" value="30" step="any" min="0"><small>external_fps</small></label><label class="field"><span>RealSense 序列号（可留空）</span><input name="external_serial" type="text" value=""><small>external_serial</small></label><label class="field"><span>双相机时间差上限 / s</span><input name="max_camera_sync_delta" type="number" value="0.05" step="any" min="0"><small>max_camera_sync_delta</small></label></div></details><div id="safetyBox" class="safety-box" hidden>
+                <strong>真实控制安全确认</strong>
+                <p>
+                  主臂不能同时控制从臂，工作区应无人员和障碍物，急停按钮必须触手可及。
+                </p>
+                <label class="check"
+                  ><input id="motionConfirmed" type="checkbox" /><span
+                    >我已完成以上检查，并确认机械臂可以运动</span
+                  ></label
+                >
+              </div>
+              <button id="startExecution" class="button primary" type="submit">
+                启动仅推理</button
+              ><button
+                id="stopExecution"
+                class="button stop"
+                type="button"
+                disabled
+              >
+                停止并保持当前位置
+              </button>
+            </form>
+          </aside>
+        </div>
+      </section>
+    </main>
+    <dialog id="taskDialog" class="task-dialog">
+      <div class="dialog-head">
+        <div>
+          <small>TASKS</small>
+          <h2>选择任务</h2>
+          <p>采集、训练和执行会使用同一个任务目录。</p>
+        </div>
+        <button id="closeTaskDialog" aria-label="关闭">×</button>
+      </div>
+      <div id="dialogTaskList" class="dialog-task-list"></div>
+      <div class="task-delete-row"><button id="deleteTask" type="button" class="button stop">删除当前任务及文件夹</button></div><form id="renameTaskForm" class="rename-task-form">
+        <label class="field"
+          ><span>重命名当前任务</span
+          ><input name="name" maxlength="40" required /></label
+        ><button class="button ghost" type="submit">同步重命名</button>
+        <p>任务名称、数据集文件夹和模型文件夹会一起修改，唯一后缀保持不变。</p>
+      </form>
+      <form id="newTaskForm" class="new-task-form">
+        <label class="field"
+          ><span>新任务名称</span
+          ><input
+            name="name"
+            maxlength="40"
+            placeholder="例如：抓取蓝色方块"
+            required /></label
+        ><button class="button primary" type="submit">创建并选择</button>
+      </form>
+    </dialog>
+    <dialog id="deleteDialog" class="task-dialog"><form id="deleteForm" class="delete-content">
+<h2>删除任务「<span id="deleteName"></span>」</h2><p>以下文件夹及其中的数据、模型会永久删除，无法通过页面恢复。</p>
+<pre id="deletePaths"></pre><label class="field"><span>输入完整任务名称以确认</span><input id="deleteConfirmation" autocomplete="off" required></label>
+<div class="button-row"><button id="cancelDelete" type="button" class="button ghost">取消</button><button id="confirmDelete" type="submit" class="button stop" disabled>永久删除</button></div>
+</form></dialog><script type="module" src="/src/js/console.js"></script>
+  </body>
+</html>

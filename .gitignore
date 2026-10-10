@@ -1,0 +1,25 @@
+OrbbecViewer_v1.10.37_202607071428_win_x64_release/
+pyorbbecsdk_v1/
+RealSense.Viewer.exe
+
+
+# IDE配置
+.idea/
+.vscode/
+
+# 数据集、权重、日志（绝对不上传）
+Dataset/
+Log/
+checkpoints/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# Python缓存
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.venv/

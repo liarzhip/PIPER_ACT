@@ -1,0 +1,26 @@
+{
+  "selected": "cf82b0e65c",
+  "tasks": [
+    {
+      "id": "24837a03c8",
+      "name": "desktop_tidy",
+      "dataset_dir": "D:\\piper_act\\Dataset\\desktop_tidy",
+      "ckpt_dir": "D:\\piper_act\\checkpoints\\desktop_tidy",
+      "created_at": "2026-10-08 19:11"
+    },
+    {
+      "id": "cf82b0e65c",
+      "name": "desktop_tidy_dc_v4",
+      "dataset_dir": "D:\\piper_act\\Dataset\\desktop_tidy_dc_v4",
+      "ckpt_dir": "D:\\piper_act\\checkpoints\\desktop_tidy_dc_v41",
+      "created_at": "2026-10-09 17:43"
+    },
+    {
+      "id": "fd0ff3bf96",
+      "name": "desktop_tidy_v3",
+      "dataset_dir": "D:\\piper_act\\Dataset\\desktop_tidy_v3",
+      "ckpt_dir": "D:\\piper_act\\checkpoints\\desktop_tidy_v31",
+      "created_at": "2026-10-08 19:11"
+    }
+  ]
+}

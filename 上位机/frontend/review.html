@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>PiPER · ACT 数据工作台</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230c1824'/%3E%3Cpath d='M9 24V9h9a5 5 0 010 10h-5' fill='none' stroke='%233bd9bd' stroke-width='3'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="/src/css/style.css" />
+  </head>
+  <body>
+    <aside class="rail">
+      <div class="brand">P<span>PiPER</span></div>
+      <div class="rail-label">工作空间</div>
+      <button class="nav active" data-tab="capture">
+        ◉ <span>返回双相机采集</span><small>01</small></button
+      ><button class="nav" data-tab="review">
+        ▤ <span>回放与验证</span><small>02</small>
+      </button>
+      <div class="rail-bottom">
+        <span class="chip">ACT</span>
+        <p>PiPER-X · Leader / Follower</p>
+        <small>关节 rad · 夹爪 m · RGB uint8</small>
+      </div>
+    </aside>
+    <main>
+      <header>
+        <div class="crumb">PiPER-X <span>/</span> ACT 数据工作台</div>
+        <span id="connection" class="badge">未连接</span>
+      </header>
+      <div id="message" role="alert" hidden></div>
+      <section id="capture" class="view">
+        <div class="title-row">
+          <div>
+            <div class="eyebrow">ACQUISITION</div>
+            <h1>数据采集</h1>
+            <p>预览腕部视角，记录一次完整示教。</p>
+          </div>
+          <span class="quiet">Orbbec DaBai DC1 · SocketCAN</span>
+        </div>
+        <div class="capture-grid">
+          <div class="left-stack">
+            <div class="camera panel">
+              <div class="panel-head">
+                <span>腕部相机 <small>RGB / LIVE</small></span
+                ><span id="cameraBadge" class="badge">等待连接</span>
+              </div>
+              <div class="camera-screen">
+                <img id="liveImage" alt="腕部相机实时画面" hidden />
+                <div id="cameraEmpty" class="camera-empty">
+                  <div class="focus-icon">⌖</div>
+                  <strong>等待相机画面</strong>
+                  <p>连接设备后，在这里确认示教视角</p>
+                </div>
+                <div id="demoWatermark" hidden>模拟演示 · 不用于训练</div>
+                <div class="camera-footer">
+                  <span id="liveResolution">WRIST CAMERA</span
+                  ><span id="actionState">ACTION —</span>
+                </div>
+              </div>
+            </div>
+            <div class="metrics">
+              <div>
+                <span>采集帧数</span><strong id="count">0</strong
+                ><small>frames</small>
+              </div>
+              <div>
+                <span>录制时长</span><strong id="elapsed">0.0</strong
+                ><small>s</small>
+              </div>
+              <div>
+                <span>图像延迟</span><strong id="age">—</strong
+                ><small>ms</small>
+              </div>
+              <div>
+                <span>丢弃帧数</span><strong id="skipped">0</strong
+                ><small>frames</small>
+              </div>
+            </div>
+            <div class="panel joint-panel">
+              <div class="panel-head">
+                <span>关节状态</span
+                ><small>Follower qpos / Leader action</small>
+              </div>
+              <div id="joints" class="joints"></div>
+            </div>
+          </div>
+          <div class="right-stack">
+            <form id="configForm" class="panel config">
+              <div class="panel-head">
+                <span>采集配置</span><small>SESSION</small>
+              </div>
+              <fieldset id="configFields">
+                <label
+                  >数据来源<select name="mode" id="mode">
+                    <option value="hardware">真实设备 · PiPER-X + DaBai</option>
+                    <option value="demo">模拟演示 · 独立数据目录</option>
+                  </select></label
+                >
+                <div class="form-grid">
+                  <label
+                    >CAN 接口<input
+                      name="can"
+                      value="can0"
+                      required
+                      pattern="[A-Za-z0-9_-]{1,40}" /></label
+                  ><label
+                    >采样频率 / Hz<input
+                      name="fps"
+                      type="number"
+                      value="20"
+                      min="1"
+                      max="120"
+                      step="1"
+                      required /></label
+                  ><label
+                    >相机宽度 / px<input
+                      name="camera_width"
+                      type="number"
+                      value="640"
+                      min="1"
+                      max="4096"
+                      required /></label
+                  ><label
+                    >相机高度 / px<input
+                      name="camera_height"
+                      type="number"
+                      value="0"
+                      min="0"
+                      max="2160"
+                      required
+                    /><small>0 = SDK 自动选择</small></label
+                  ><label
+                    >相机帧率 / fps<input
+                      name="camera_fps"
+                      type="number"
+                      value="30"
+                      min="1"
+                      max="120"
+                      required /></label
+                  ><label
+                    >最大图像延迟 / s<input
+                      name="max_image_age"
+                      type="number"
+                      value="0.10"
+                      min="0.001"
+                      max="5"
+                      step="0.001"
+                      required /></label
+                  ><label
+                    >自动停止 / s<input
+                      name="duration"
+                      type="number"
+                      value="0"
+                      min="0"
+                      max="86400"
+                      required
+                    /><small>0 = 手动停止</small></label
+                  ><label
+                    >相机名称<input
+                      name="camera_name"
+                      value="wrist"
+                      required
+                      pattern="[A-Za-z0-9_-]{1,40}"
+                  /></label>
+                </div>
+                <details>
+                  <summary>连接选项</summary>
+                  <label
+                    >初始化超时 / s<input
+                      name="startup_timeout"
+                      type="number"
+                      min="1"
+                      max="120"
+                      value="15"
+                      required /></label
+                  ><label class="check"
+                    ><input name="judge_flag" type="checkbox" checked />启用 CAN
+                    接口检查</label
+                  >
+                </details>
+              </fieldset>
+              <div class="connect-row">
+                <button id="connect" type="submit" class="secondary">
+                  连接并预览</button
+                ><button
+                  id="disconnect"
+                  type="button"
+                  class="text-button"
+                  disabled
+                >
+                  断开
+                </button>
+              </div>
+            </form>
+            <div class="panel recording-controls">
+              <div class="step-label">
+                <span>●</span><strong id="recordingTitle">准备采集</strong>
+              </div>
+              <p id="recordingHint">
+                连接后移动一次主臂，等待相机与从臂反馈就绪。
+              </p>
+              <button id="start" class="primary" disabled>● 开始录制</button
+              ><button id="stop" class="danger" disabled>■ 停止并保存</button
+              ><small>停止采集只结束记录，不控制机械臂运动。</small>
+            </div>
+            <div class="storage">
+              <span>保存位置</span><code id="datasetPath">—</code>
+              <p id="saved">尚未保存新的 Episode</p>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section id="review" class="view" hidden>
+        <div class="title-row">
+          <div>
+            <div class="eyebrow">DATASET INSPECTION</div>
+            <h1>回放与验证</h1>
+            <p>检查画面、时序与主从臂轨迹，再进入训练。</p>
+          </div>
+          <button id="refresh" class="secondary">刷新数据集</button>
+        </div>
+        <div class="review-grid">
+          <div class="panel episode-panel">
+            <div class="panel-head">Episode 数据集</div>
+            <label class="dataset-select"
+              >数据目录<select id="reviewMode">
+                <option value="hardware">真实采集</option>
+                <option value="demo">模拟演示</option>
+              </select></label
+            >
+            <div id="episodes" class="episode-list"></div>
+          </div>
+          <div>
+            <div id="reviewEmpty" class="empty panel">
+              <strong>选择一段示教数据</strong>
+              <p>左侧选择 Episode，查看回放、轨迹和验证结果。</p>
+            </div>
+            <div id="episodeDetail" hidden>
+              <div class="panel playback">
+                <div class="panel-head">
+                  <strong id="episodeName"></strong
+                  ><a id="download">下载 HDF5 ↓</a>
+                </div>
+                <div class="playback-screen">
+                  <img id="playImage" alt="Episode 录制画面" /><span
+                    id="playDemo"
+                    hidden
+                    >模拟数据</span
+                  >
+                </div>
+                <div class="play-controls">
+                  <button id="prev" aria-label="上一帧">‹</button
+                  ><button id="play">播放</button
+                  ><button id="next" aria-label="下一帧">›</button
+                  ><input
+                    id="seek"
+                    type="range"
+                    min="0"
+                    max="0"
+                    value="0"
+                    aria-label="回放帧"
+                  /><span id="frameLabel">0 / 0</span
+                  ><select id="speed" aria-label="回放速度">
+                    <option value="0.5">0.5×</option>
+                    <option value="1" selected>1×</option>
+                    <option value="2">2×</option>
+                  </select>
+                </div>
+                <p id="episodeMeta" class="meta"></p>
+              </div>
+              <div class="panel chart-panel">
+                <div class="panel-head">
+                  <span>qpos / action 轨迹</span>
+                  <div class="legend">
+                    <span>━ qpos</span><span>━ action</span>
+                  </div>
+                </div>
+                <div id="jointTabs" class="joint-tabs"></div>
+                <canvas
+                  id="chart"
+                  aria-label="关节 qpos 与 action 随时间变化曲线"
+                  role="img"
+                ></canvas>
+                <p class="meta">
+                  横轴：时间 / s · 关节：deg · 夹爪：mm · 最多显示 1500 个采样点
+                </p>
+              </div>
+              <div class="panel validation">
+                <div class="panel-head">
+                  <span>数据验证</span
+                  ><span id="validationStatus" class="badge">尚未验证</span>
+                </div>
+                <div class="validation-actions">
+                  <label
+                    >最大图像延迟 / s<input
+                      id="validationAge"
+                      type="number"
+                      value="0.10"
+                      min="0.001"
+                      max="5"
+                      step="0.001" /></label
+                  ><button id="validate" class="primary">运行验证</button
+                  ><button id="plots" class="secondary">
+                    验证并导出 7 张曲线
+                  </button>
+                </div>
+                <p class="meta">
+                  检查结构、NaN / Inf、采样频率、图像延迟、HOLD 统计与跟踪误差。
+                </p>
+                <label>双相机同步阈值 / s <input id="validationSync" type="number" value="0.05" min="0.001" max="5" step="0.001"></label><p>V7 双相机回放：左侧 wrist，右侧 external；验证会同时检查两路 RGB、深度、帧龄和同步差。</p><pre id="report">等待运行验证。</pre>
+                <div id="plotLinks"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+      <footer>
+        PiPER ACT <span>数据采集与验证工作台</span><span>本地存储 · HDF5</span>
+      </footer>
+    </main>
+    <script type="module" src="/src/js/app.js"></script>
+  </body>
+</html>
