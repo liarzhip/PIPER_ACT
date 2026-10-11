@@ -1,0 +1,5 @@
+dataset/
+dataset.zip
+.vscode/
+__pycache__/
+Log/
