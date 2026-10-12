@@ -531,6 +531,25 @@ def training_command(task, data, python_executable=None):
     if not TRAIN_SCRIPT.is_file():
         raise FileNotFoundError(f"训练脚本不存在：{TRAIN_SCRIPT}")
     args = parameter_arguments("training", data)
+    mode = data.get('training_mode', 'new')
+    if mode not in ('new', 'resume', 'extend'):
+        raise ValueError('训练模式无效')
+    if mode != 'new':
+        folder = Path(task['ckpt_dir'])
+        if not any(folder.glob('*.ckpt')):
+            raise ValueError('模型目录中没有可恢复的断点')
+        args += ['--resume']
+        if mode == 'extend':
+            count = data.get('additional_epochs', 0)
+            try:
+                parsed_count = int(count)
+            except (TypeError, ValueError, OverflowError):
+                raise ValueError('追加轮数必须为 1 到 100000 的整数')
+            if isinstance(count, bool) or str(count).strip() != str(parsed_count) or not 1 <= parsed_count <= 100000:
+                raise ValueError('追加轮数必须为 1 到 100000 的整数')
+            args += ['--additional_epochs', str(int(count))]
+    elif any(Path(task['ckpt_dir']).glob('*.ckpt')):
+        raise ValueError('此目录已有模型，请选择继续训练、追加轮次，或修改为新模型目录')
     if not any(Path(task["dataset_dir"]).glob("episode_*.hdf5")):
         raise ValueError("当前任务没有可训练的 Episode")
     return [str(python_executable or sys.executable), "-u", str(Path(__file__).parent / "training_entry.py"),

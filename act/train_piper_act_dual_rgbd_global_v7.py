@@ -16,6 +16,7 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 import matplotlib.pyplot as plt
 import torch
 from tqdm import tqdm
+from training_resume import prepare_resume, verify_resume_data, restore_training, save_training_state, atomic_torch_save
 
 from policy_piper_dual_rgbd_global import ACTPolicy
 from utils_piper_dual_rgbd_global import (
@@ -97,6 +98,8 @@ def parse_args():
 
     p.add_argument("--save_every", type=int, default=10)
     p.add_argument("--plot_every", type=int, default=10)
+    p.add_argument("--resume", action="store_true")
+    p.add_argument("--additional_epochs", type=int, default=0)
     return p.parse_args()
 
 
@@ -127,18 +130,18 @@ def forward_pass(data, policy):
     )
 
 
-def save_curves(train_hist, val_hist, ckpt_dir):
+def save_curves(train_hist, val_hist, ckpt_dir, offset=0):
     if not train_hist:
         return
 
     for key in train_hist[0]:
         plt.figure(figsize=(8, 4))
         plt.plot(
-            [x[key] for x in train_hist],
+            range(offset+1, offset+len(train_hist)+1), [x[key] for x in train_hist],
             label="train",
         )
         plt.plot(
-            [x[key] for x in val_hist],
+            range(offset+1, offset+len(val_hist)+1), [x[key] for x in val_hist],
             label="val",
         )
         plt.xlabel("Epoch")
@@ -155,6 +158,7 @@ def save_curves(train_hist, val_hist, ckpt_dir):
 
 def main():
     args = parse_args()
+    resume = prepare_resume(args)
 
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA is unavailable.")
@@ -252,14 +256,15 @@ def main():
                     f"but requested {args.chunk_size}. Use a NEW --ckpt_dir."
                 )
 
-    config_path.write_text(
-        json.dumps(
-            architecture_config,
-            ensure_ascii=False,
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
+    if resume is None:
+        config_path.write_text(
+            json.dumps(
+                architecture_config,
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
 
     (
         train_loader,
@@ -282,6 +287,7 @@ def main():
         global_history_stride=args.global_history_stride,
     )
 
+    verify_resume_data(resume, stats, info)
     camera_depth_stats = stats["camera_depth_stats"]
     depth_means = [
         float(camera_depth_stats[cam]["depth_mean"])
@@ -349,23 +355,24 @@ def main():
         "qpos+action_from_episode_start_strictly_past"
     )
 
-    with open(
-        ckpt_dir / "dataset_stats.pkl",
-        "wb",
-    ) as f:
-        pickle.dump(stats, f)
+    if resume is None:
+        with open(
+            ckpt_dir / "dataset_stats.pkl",
+            "wb",
+        ) as f:
+            pickle.dump(stats, f)
 
-    with open(
-        ckpt_dir / "dataset_split.json",
-        "w",
-        encoding="utf-8",
-    ) as f:
-        json.dump(
-            info,
-            f,
-            indent=2,
-            ensure_ascii=False,
-        )
+        with open(
+            ckpt_dir / "dataset_split.json",
+            "w",
+            encoding="utf-8",
+        ) as f:
+            json.dump(
+                info,
+                f,
+                indent=2,
+                ensure_ascii=False,
+            )
 
     policy_config = {
         "lr": args.lr,
@@ -400,8 +407,26 @@ def main():
     best_epoch = -1
     best_state = None
 
+    start_epoch = resume['completed'] if resume else 0
+    history_offset = resume['offset'] if resume else 0
+    if resume:
+        train_hist, val_hist = resume['train'], resume['val']
+        min_val, best_epoch, best_state = resume['min_val'], resume['best_epoch'], resume['best_state']
+        # Older interrupted runs have no saved best loss. Re-evaluate their best weights.
+        if best_state is not None and not math.isfinite(min_val):
+            policy.load_state_dict(best_state, strict=True)
+            policy.eval()
+            with torch.inference_mode():
+                baseline = compute_dict_mean([detach_dict(forward_pass(data, policy)) for data in val_loader])
+            min_val = float(baseline['loss'])
+        restore_training(resume, policy, optimizer)
+        for index, (tr, va) in enumerate(zip(train_hist, val_hist)):
+            print('WEB_METRICS ' + json.dumps(dict(epoch=history_offset+index+1, total_epochs=args.num_epochs,
+                  train=tr, val=va, best_loss=min_val, best_epoch=best_epoch+1)), flush=True)
+    stop_path = os.environ.get('PIPER_TRAIN_STOP_FILE')
+    completed_epochs = start_epoch
     for epoch in tqdm(
-        range(args.num_epochs),
+        range(start_epoch, args.num_epochs),
         desc="Training ACT Dual RGB-D Global",
     ):
         policy.eval()
@@ -437,7 +462,7 @@ def main():
             best_state = deepcopy(
                 policy.state_dict()
             )
-            torch.save(
+            atomic_torch_save(
                 best_state,
                 ckpt_dir / "policy_best.ckpt",
             )
@@ -515,11 +540,18 @@ def main():
             flush=True,
         )
 
+        completed_epochs = epoch + 1
+        save_training_state(ckpt_dir, args, completed_epochs, policy, optimizer,
+                            train_hist, val_hist, min_val, best_epoch, best_state, history_offset)
+        if stop_path and Path(stop_path).exists():
+            print('[STOP] 本轮已完成，完整断点已保存，可继续训练。', flush=True)
+            break
+
         if (
             args.save_every > 0
             and (epoch + 1) % args.save_every == 0
         ):
-            torch.save(
+            atomic_torch_save(
                 policy.state_dict(),
                 ckpt_dir
                 / f"policy_epoch_{epoch+1:04d}.ckpt",
@@ -535,16 +567,16 @@ def main():
             save_curves(
                 train_hist,
                 val_hist,
-                ckpt_dir,
+                ckpt_dir, history_offset,
             )
 
-    torch.save(
+    atomic_torch_save(
         policy.state_dict(),
         ckpt_dir / "policy_last.ckpt",
     )
 
     if best_state is not None:
-        torch.save(
+        atomic_torch_save(
             best_state,
             ckpt_dir / "policy_best.ckpt",
         )
@@ -552,7 +584,7 @@ def main():
     save_curves(
         train_hist,
         val_hist,
-        ckpt_dir,
+        ckpt_dir, history_offset,
     )
 
     history = {
@@ -561,6 +593,8 @@ def main():
         "best_epoch": best_epoch,
         "best_val_loss": min_val,
         "args": vars(args),
+        "completed_epochs": completed_epochs,
+        "history_start_epoch": history_offset,
     }
 
     with open(

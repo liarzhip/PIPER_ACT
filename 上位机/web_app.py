@@ -556,7 +556,9 @@ def create_app(dataset=None, task_store_path=None):
             raise ValueError("所选 Conda 环境缺少训练依赖：torch、OpenCV 或 h5py")
         command = training_command(task, request.get_json() or {}, runtime_python)
         env = {**runtime_environment(runtime_python), "MPLBACKEND": "Agg"}
-        trainer.start(command, task["id"], PROJECT_ROOT / "act", env=env)
+        stop_file = PROJECT_ROOT / '.piper_runtime' / 'training.stop'
+        env['PIPER_TRAIN_STOP_FILE'] = str(stop_file)
+        trainer.start(command, task["id"], PROJECT_ROOT / "act", env=env, stop_file=stop_file)
         return jsonify(trainer.snapshot()), 202
 
     @app.post("/api/training/stop")

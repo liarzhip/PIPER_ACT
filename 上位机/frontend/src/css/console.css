@@ -18,3 +18,10 @@
 @media(max-width:760px){.operation-page{padding:10px 10px 80px}.operation-toolbar{top:88px;gap:6px;padding:8px}.operation-toolbar .button{padding:8px 10px;font-size:12px;min-height:36px}.operation-status{width:100%;font-size:12px}.operation-page .stage-banner{display:none}.operation-page .main-column{grid-template-columns:1fr;gap:8px}.operation-page .camera-card{grid-column:1;grid-row:2}.operation-page .main-column>.joint-card{grid-column:1;grid-row:3}.operation-page .camera-view{height:150px;min-height:150px}.operation-page .joint-trends canvas{height:140px;min-height:140px}.operation-page .card-head{padding:8px 12px}.operation-page .card-head p{display:none}.operation-page .metric{padding:6px 8px}.operation-page .metric strong{font-size:16px}.operation-page .metric span,.operation-page .metric small{font-size:10px}.operation-page .metric-grid.four{grid-template-columns:repeat(4,minmax(0,1fr))}.execution-quick-mode{flex-basis:100%}#page-training .chart-wrap{height:260px}}
 .operation-page .joint-trends canvas{flex:none}@media(max-width:760px){.operation-page .joint-trends canvas{height:140px;min-height:140px}.operation-page .camera-empty .focus-frame{display:none}.operation-page .camera-empty p{margin:6px 0;font-size:11px}}
 @media(max-width:760px){.operation-page .camera-view{height:140px;min-height:140px}.operation-page .joint-trends canvas{height:130px;min-height:130px}}
+
+#trainingResumeControls{flex:1;grid-template-columns:repeat(2,minmax(150px,1fr));gap:8px 14px;}
+#trainingResumeControls .parameter-note{margin:0;font-size:12px;}
+#trainingResumeControls .field{margin:0;}
+@media(max-width:850px){#trainingResumeControls{flex-basis:100%;grid-template-columns:1fr;}}
+
+#trainingResumeControls .field[hidden]{display:none;}

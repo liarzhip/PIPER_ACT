@@ -1,3 +1,20 @@
+export function updateTrainingModeFields() {
+  const form=document.getElementById('trainingForm');
+  const mode=form.elements.training_mode;
+  const extend=mode.value==='extend';
+  for(const [name,visible] of [['num_epochs',!extend],['additional_epochs',extend]]){
+    const input=form.elements[name];
+    input.closest('label').hidden=!visible;
+    input.required=visible;
+    input.disabled=mode.disabled||!visible;
+  }
+  document.querySelector('#trainingResumeControls .parameter-note').textContent={
+    new:'从第 1 轮开始，训练到目标总轮数。请使用新的模型目录。',
+    resume:'从最近保存的断点继续，训练到目标总轮数。沿用原模型与数据配置。',
+    extend:'从最近保存的断点继续，总轮数 = 已保存轮数 + 追加轮数。沿用原模型与数据配置。'
+  }[mode.value];
+}
+
 // Relocate existing controls, preserving their IDs, form ownership and handlers.
 export function setupStageLayouts() {
   for (const [phase,formId,ids,label] of [
@@ -26,6 +43,14 @@ export function setupStageLayouts() {
       const title=document.getElementById('recordingTitle');title.classList.add('operation-status');toolbar.prepend(title);
       page.querySelector('.camera-card h2').textContent='双相机实时画面';
       const note= form.querySelector('.path-parameters .parameter-note');if(note)note.textContent='可修改数据集保存目录，连接时应用；已有文件不会搬动。';
+    }
+    if(phase==='training'){
+      const controls=document.getElementById('trainingResumeControls');
+      controls.querySelectorAll('input,select').forEach(element=>element.setAttribute('form',formId));
+      const total=form.querySelector('[name="num_epochs"]'); total.setAttribute('form',formId);
+      controls.insertBefore(total.closest('label'),controls.querySelector('.parameter-note')); toolbar.prepend(controls);
+      form.elements.training_mode.addEventListener('change',updateTrainingModeFields);
+      updateTrainingModeFields();
     }
     if(phase==='execution'){
       const mode=form.querySelector('.mode-picker'), safety=document.getElementById('safetyBox');

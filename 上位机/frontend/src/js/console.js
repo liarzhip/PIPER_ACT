@@ -1,4 +1,4 @@
-import {setupStageLayouts} from './stage-layout.js';
+import {setupStageLayouts,updateTrainingModeFields} from './stage-layout.js';
 import {createJointChart, initCaptureCharts, updateCaptureCharts, drawCaptureCharts} from './capture-chart.js';
 const $ = id => document.getElementById(id);
 const apiHeaders = {'Content-Type':'application/json','X-Console-Request':'1'};
@@ -111,14 +111,15 @@ function renderCapture(s){
   if(!online){$('liveImage').hidden=true;$('cameraEmpty').hidden=false;}
   if(s.error&&s.error!==previous?.error)toast(s.error,true);if(previous?.state==='recording'&&s.state==='ready')loadTasks().catch(()=>{});
 }
-function formData(form){const data=Object.fromEntries(new FormData(form));form.querySelectorAll('input[type=number]').forEach(i=>{if(i.value.trim()==='')delete data[i.name];else data[i.name]=Number(i.value);});form.querySelectorAll('input[type=checkbox]').forEach(i=>data[i.name]=i.checked);return data;}
+function formData(form){const data=Object.fromEntries(new FormData(form));[...form.elements].filter(i=>i.type==='number'&&!i.disabled).forEach(i=>{if(i.value.trim()==='')delete data[i.name];else data[i.name]=Number(i.value);});[...form.elements].filter(i=>i.type==='checkbox'&&!i.disabled).forEach(i=>data[i.name]=i.checked);return data;}
 async function command(url,data={}){try{return await api(url,data);}catch(e){toast(e.message,true);throw e;}}
 $('configForm').onsubmit=async e=>{e.preventDefault();try{const data=formData(e.target);await syncPaths(data);renderCapture(await command('/api/connect',data));}catch{}};
 $('start').onclick=()=>command('/api/start').then(renderCapture).catch(()=>{});$('stop').onclick=()=>command('/api/stop').then(s=>{renderCapture(s);loadTasks();toast('Episode 已保存');}).catch(()=>{});$('disconnect').onclick=()=>command('/api/disconnect').then(renderCapture).catch(()=>{});
 $('liveImage').onload=()=>{$('liveResolution').textContent=`WRIST + EXTERNAL · ${$('liveImage').naturalWidth} × ${$('liveImage').naturalHeight}`;};
 
 function renderTraining(job){
-  setPill($('trainingState'),job.state,jobLabels[job.state]||job.state);const active=['starting','running','stopping'].includes(job.state);$('startTraining').disabled=active||!selectedTask();$('stopTraining').disabled=!['starting','running'].includes(job.state);$('trainingForm').querySelectorAll('input,select').forEach(i=>{if(i.id!=='stopTraining')i.disabled=active;});
+  setPill($('trainingState'),job.state,jobLabels[job.state]||job.state);const active=['starting','running','stopping'].includes(job.state);$('startTraining').disabled=active||!selectedTask();$('stopTraining').disabled=!['starting','running'].includes(job.state);[...$('trainingForm').elements].filter(i=>['INPUT','SELECT'].includes(i.tagName)).forEach(i=>{if(i.id!=='stopTraining')i.disabled=active;});
+  updateTrainingModeFields();
   const m=job.latest||{}, train=m.train||{};$('epochMetric').textContent=m.epoch?`${m.epoch} / ${m.total_epochs}`:'0 / 0';$('lossMetric').textContent=formatMetric(train.loss);$('l1Metric').textContent=formatMetric(train.l1);$('klMetric').textContent=formatMetric(train.kl);
   const pct=m.total_epochs?Math.min(100,m.epoch/m.total_epochs*100):0;$('trainingProgress').style.width=`${pct}%`;
   $('trainingLog').textContent=job.logs?.length?job.logs.join('\n'):(job.error||'等待开始训练。');$('trainingLog').scrollTop=$('trainingLog').scrollHeight;
@@ -127,7 +128,7 @@ function renderTraining(job){
 }
 function formatMetric(v){return Number.isFinite(v)?v.toFixed(v<.01?6:4):'—';}
 $('trainingForm').onsubmit=async e=>{e.preventDefault();try{await syncPaths(formData(e.target));await command('/api/training/start',formData(e.target));toast('训练已启动，初始化可能需要一些时间');}catch{}};
-$('stopTraining').onclick=()=>command('/api/training/stop').then(()=>toast('正在停止训练')).catch(()=>{});
+$('stopTraining').onclick=()=>command('/api/training/stop').then(()=>toast('将在本轮完成并保存断点后停止，请等待')).catch(()=>{});
 $('toggleTrainLog').onclick=()=>{const p=$('trainingLog');p.classList.toggle('collapsed');$('toggleTrainLog').textContent=p.classList.contains('collapsed')?'展开':'收起';};
 
 function drawTrainingChart(){

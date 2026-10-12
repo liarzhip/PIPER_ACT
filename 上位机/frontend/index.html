@@ -392,6 +392,11 @@
           </div>
           <aside class="control-column">
             <form id="trainingForm" class="card form-card">
+              <div id="trainingResumeControls" class="form-grid">
+                <label class="field"><span>训练方式</span><select name="training_mode"><option value="new">从头训练</option><option value="resume">继续至目标总轮数</option><option value="extend">在已保存进度上追加轮次</option></select></label>
+                <label class="field"><span>追加轮数</span><input name="additional_epochs" type="number" value="50" min="1" max="100000" step="1" required></label>
+                <p class="parameter-note wide">继续训练沿用原模型与数据配置。总轮数模式使用下方“目标总轮数”；追加模式按已保存轮数 + 追加轮数计算。旧断点仅恢复权重，新版每轮保存完整状态。</p>
+              </div>
               <div class="form-grid path-parameters"><label class="field wide"><span>数据集目录</span><input name="dataset_dir" type="text" value=""><small>dataset_dir</small></label><label class="field wide"><span>模型目录</span><input name="ckpt_dir" type="text" value=""><small>ckpt_dir</small></label><p class="parameter-note wide">已根据当前任务自动填写，可直接修改为其他绝对路径。启动训练时保存修改，不搬动已有文件。</p></div><div class="card-head">
                 <div>
                   <h2>训练参数</h2>
@@ -400,7 +405,7 @@
               </div>
               <div class="form-grid">
                 <label class="field"
-                  ><span>训练轮数</span
+                  ><span>目标总轮数</span
                   ><input
                     name="num_epochs"
                     type="number"
@@ -487,7 +492,7 @@
                 type="button"
                 disabled
               >
-                停止训练
+                完成本轮后停止
               </button>
             </form>
           </aside>

@@ -54,6 +54,7 @@ class ParametersTests(unittest.TestCase):
         self.temp.cleanup()
 
     def test_screenshot_training_command_and_all_options(self):
+        (Path(self.task["ckpt_dir"])/"policy_best.ckpt").unlink()  # Fresh training uses an empty model directory.
         data=dict(num_epochs=100,batch_size=10,chunk_size=20,sample_stride=10,
                   global_history_stride=1,global_hidden_dim=128,global_residual_scale=1,
                   kl_weight=10,hidden_dim=512,dim_feedforward=3200,lr=1e-5,

@@ -63,7 +63,7 @@ def prepare_depth_stats(args):
 
 def main():
     original = sys.argv[1:]
-    if '--help' not in original and '-h' not in original:
+    if '--resume' not in original and '--help' not in original and '-h' not in original:
         parser=argparse.ArgumentParser(add_help=False)
         parser.add_argument('--dataset_dir',required=True)
         parser.add_argument('--depth_stats_json')
