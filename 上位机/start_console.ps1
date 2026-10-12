@@ -1,6 +1,6 @@
 ﻿param([switch]$NoBrowser, [int]$Port = 5088)
 $ErrorActionPreference = 'Stop'
-$hostDir = Join-Path $PSScriptRoot '上位机'
+$hostDir = [System.IO.Path]::GetFullPath($PSScriptRoot)
 $python = if ($env:PIPER_PYTHON) { $env:PIPER_PYTHON } else { Join-Path $env:USERPROFILE 'anaconda3\envs\piper_act\python.exe' }
 $web = Join-Path $hostDir 'web_app.py'
 $url = "http://127.0.0.1:$Port"
