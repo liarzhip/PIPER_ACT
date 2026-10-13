@@ -1,8 +1,8 @@
 # PIPER_ACT 完整开发指南
 
 > 适用项目：[liarzhip/PIPER_ACT](https://github.com/liarzhip/PIPER_ACT/tree/main)  
-> 核对日期：2026-10-11  
-> 核对提交：`38e243709516cdf5fb3851067b989db965e8f0e0`  
+> 核对日期：2026-10-12  
+> 核对提交：`636d94fb64c81260572671f6d95bcfdac164e573`  
 > 主线：Windows + PiPER-X + 腕部 Orbbec DaBai DC1 + 外部 RealSense + 双相机 RGB-D ACT + 全局 GRU 历史记忆 + CPV 执行。  
 > 本文根据该提交的实际源码编写；命令、默认值与旧 README 冲突时，以本文注明的代码行为为准。官方链接属于上游文档，可能随版本更新。
 
@@ -118,13 +118,15 @@ flowchart TD
 | `act/patch_act_model_for_piper.py` | 对旧模型的固定 14 维实现做适配；当前模型已使用可配置状态维度 |
 | `上位机/web_app.py` | Flask 路由、设备采集管理、预览与验证 |
 | `上位机/workflow.py` | 任务目录、参数转命令、训练与执行子进程 |
-| `上位机/training_entry.py` | 自动准备训练集深度统计后调用 V7 |
+| `上位机/training_entry.py` | 新训练自动准备深度统计；续训交由原统计恢复流程 |
+| `act/training_resume.py` | 断点选择、恢复参数/优化器/随机状态、数据校验与原子保存 |
+| `上位机/继续训练说明.md` | 三种训练方式与断点恢复说明 |
 | `上位机/dual_validation.py` | 双相机结构、帧龄与同步差检查 |
 | `上位机/parameter_specs.json` | 网页可调整参数规范 |
 | `上位机/frontend/` | HTML、CSS、JavaScript，Vite 开发与构建 |
 | `上位机/tests/` | 上位机与参数集成测试 |
-| `start_console.ps1` | Windows 后端健康检查、日志和浏览器启动 |
-| `启动网页控制台.bat` | 双击启动入口 |
+| `上位机/start_console.ps1` | Windows 后端健康检查、日志和浏览器启动 |
+| `上位机/启动网页控制台.bat` | 双击启动入口 |
 
 `act/` 中的仿真脚本与 ViperX XML 资产属于继承的 ACT 仿真路径，不能视为 PiPER-X 的真实动力学模型。
 
@@ -165,7 +167,7 @@ git rev-parse HEAD
 需要复现本文对应版本时：
 
 ```powershell
-git checkout 38e243709516cdf5fb3851067b989db965e8f0e0
+git checkout 636d94fb64c81260572671f6d95bcfdac164e573
 ```
 
 这是固定提交查看状态；二次开发可再创建自己的分支。
@@ -568,11 +570,11 @@ python .\compute_depth_stats_dual.py `
 
 ### 9.4 网页自动统计与直接训练的区别
 
-网页通过 `上位机/training_entry.py` 启动训练。没有显式统计路径时，它优先采用数据目录现有 `depth_stats_dual.json`；否则根据当前 seed、train_ratio、max_episodes 与每路相机属性范围，只从训练集计算统计，并保存在 `.depth_stats-cache/`。
+网页通过 `上位机/training_entry.py` 启动训练。对于从头训练，没有显式统计路径时，它优先采用数据目录现有 `depth_stats_dual.json`；否则根据当前 seed、train_ratio、max_episodes 与每路相机属性范围，只从训练集计算统计，并保存在 `.depth_stats-cache/`。
 
 缓存签名包含文件路径、大小、修改时间、划分与范围，方便同配置复用。不同训练 Episode 的同路深度范围不一致时，自动预处理会报错。
 
-`act/train_piper_act_dual_rgbd_global_v7.py` 直接入口不会自动计算统计；运行前执行第 9.3 节，或显式传统计路径。
+`act/train_piper_act_dual_rgbd_global_v7.py` 直接入口在从头训练时不会自动计算统计；运行前执行第 9.3 节，或显式传统计路径。带 `--resume` 时包装入口跳过新统计计算，由 `training_resume.py` 从原 `dataset_stats.pkl` 恢复深度统计。
 
 若训练使用 `--max_episodes`，独立统计器没有对应截断参数。此时建议使用网页/包装入口自动计算，并不要复用基于完整数据集生成的旧统计：
 
@@ -713,12 +715,15 @@ python .\train_piper_act_dual_rgbd_global_v7.py `
 
 改变 sample_stride 会改变每轮样本数；它不会把 20 Hz 的未来动作目标自动变成 10 Hz。
 
-### 11.5 输出与恢复限制
+### 11.5 输出与断点恢复
 
 | 文件 | 用途 |
 | --- | --- |
 | `policy_best.ckpt` | 验证损失最佳的策略权重 |
-| `policy_last.ckpt` | 最后一轮策略权重 |
+| `policy_last.ckpt` | 正常结束时保存的最后策略权重；意外中断恢复优先使用完整断点 |
+| `training_state.ckpt` | 每轮结束保存的完整训练状态，供续训使用 |
+| `resume_depth_stats.json` | 续训时从原统计恢复的每路深度配置 |
+| `resume_backups/` | 恢复前保留旧权重与配置记录 |
 | `model_config.json` | 相机顺序与网络结构 |
 | `dataset_stats.pkl` | qpos/action 与每路深度统计 |
 | `dataset_split.json` | Episode 划分 |
@@ -727,7 +732,9 @@ python .\train_piper_act_dual_rgbd_global_v7.py `
 
 部署复制整个模型目录最稳妥。不得混用不同实验的权重、统计和模型配置。
 
-当前训练器没有提供标准的断点续训参数；保存 `policy_last.ckpt` 不意味着包含优化器状态、随机状态和学习率调度恢复能力。同配置目录可通过兼容检查，也不等于自动从旧权重继续训练。要实现恢复训练，应增加明确的加载和完整训练状态保存逻辑。
+当前训练器支持 `--resume` 与 `--additional_epochs`。新版每轮结束保存 `training_state.ckpt`，包含模型、优化器、已完成轮数、参数、随机状态、训练历史与最佳模型；恢复到最近完整轮次，不恢复中断轮中的部分 batch。旧版纯权重断点只能加载权重，优化器重新初始化。完整操作见第 13.6～13.8 节。
+
+从头训练必须使用不含 `.ckpt` 的新模型目录；网页与训练器都会拒绝在已有模型目录中直接从头训练。`save_every` 控制周期策略权重文件，完整训练状态仍每轮保存，不需要等到周期轮次。
 
 ## 12. 推理与实机部署
 
@@ -837,11 +844,11 @@ python .\web_app.py --host 127.0.0.1 --port 5088
 
 ### 13.2 双击启动器
 
-根目录批处理调用 `start_console.ps1`。默认寻找用户目录中的 `anaconda3\envs\piper_act\python.exe`；不同安装位置可在 PowerShell 显式指定：
+`上位机/启动网页控制台.bat` 调用同目录的 `start_console.ps1`。默认寻找用户目录中的 `anaconda3\envs\piper_act\python.exe`；不同安装位置可在 PowerShell 显式指定：
 
 ```powershell
 conda activate piper_act
-Set-Location D:\piper_act
+Set-Location D:\piper_act\上位机
 $env:PIPER_PYTHON = (Get-Command python).Source
 .\start_console.ps1 -Port 5088
 ```
@@ -877,7 +884,8 @@ npm run dev
 | 采集 | 连接、预览、开始、停止保存、断开 |
 | 回放 | HDF5 图像与关节数据；双相机视图 |
 | 验证 | 调用原验证器，再加入双相机检查 |
-| 训练 | 通过选择的 Python 环境启动 training_entry |
+| 训练 | 从头、继续至目标总轮数、追加轮次；通过选择的 Python 环境启动 training_entry |
+| 停止训练 | 完成本轮并保存完整断点后停止，不立即终止训练进程 |
 | 执行 | 默认仅推理；真实控制需确认，启动 V7 子进程 |
 | 环境检测 | 检查模块是否存在，不证明 DLL 或设备可正常运行 |
 
@@ -909,6 +917,115 @@ npm run dev
 默认仅本机访问。局域网需求需另外配置绑定、网络访问和服务保护；当前 Flask 工作台没有账户认证体系，不应直接用于公网机器人控制。
 
 官方文档：[Flask](https://flask.palletsprojects.com/en/stable/) · [MDN JavaScript](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript) · [Vite 配置](https://vite.dev/config/)。
+
+
+### 13.6 三种训练方式
+
+训练页面顶部现有“训练方式”选择框。选择不同模式时，网页动态切换目标总轮数或追加轮数字段，并禁用不使用的字段，避免将隐藏字段误提交。
+
+| 网页选项 | 请求值 | 轮次含义 | 例子 |
+| --- | --- | --- | --- |
+| 从头训练 | `training_mode=new` | 从第 1 轮到目标总轮数 | 新目录，目标 100，则运行 100 轮 |
+| 继续至目标总轮数 | `training_mode=resume` | 恢复断点，运行至指定总轮数 | 已保存 30，目标 100，从第 31 轮继续至 100 |
+| 在已保存进度上追加轮次 | `training_mode=extend` | 已保存轮数 + 追加轮数 | 已保存 30，追加 50，目标为 80 |
+
+“追加轮数”网页范围为 1～100000 的整数。`num_epochs` 是目标总轮数，不是要额外运行的轮数。继续模式的目标必须大于断点已完成轮数；已完成的实验也可以用追加模式继续。
+
+推荐操作：选择原任务 → 核对原模型目录与数据目录 → 选择继续或追加 → 填写目标 → 开始训练 → 查看 `[RESUME]` 日志中的 `completed` 和 `target`。
+
+续训沿用原模型结构、已保存训练参数、相机顺序和归一化。网页中更改学习率、batch_size、chunk_size、seed 等，不代表这些更改会覆盖保存的参数。当前代码恢复旧参数，并重新应用模型配置；要做不同配置实验，使用新模型目录。旧断点缺少参数历史时，未保存参数才可能取界面值。
+
+### 13.7 完成当前轮次后停止
+
+训练按钮已改为“完成本轮后停止”。点击后：
+
+1. 后端将任务状态改为 `stopping`，写入项目根目录 `.piper_runtime/training.stop`。
+2. 训练进程通过环境变量 `PIPER_TRAIN_STOP_FILE` 获取停止文件路径。
+3. 当前训练轮结束后，先保存完整断点，再检查停止标记并退出循环。
+4. 正常收尾保存最终策略权重和训练记录，网页随后显示结束状态。
+
+这不是立即取消当前 batch。初始化或单轮很慢时，需要等待。收到页面提示后不要强制关闭进程；强制关闭会丢失本轮尚未保存的进度。浏览器页面关闭也不等于后端停止训练。
+
+恢复后可继续原曲线：训练器会先输出已保存历史的 `WEB_METRICS`，再输出新轮次指标。若旧断点没有历史，无法补回过去损失，曲线从可恢复位置重新记录。
+
+### 13.8 断点选择、兼容性与文件要求
+
+| 优先级 | 文件 | 恢复行为 |
+| --- | --- | --- |
+| 1 | `training_state.ckpt` | 完整状态，格式为 `piper-training-state-v1` |
+| 2 | `policy_epoch_*.ckpt`，以及有训练历史的 `policy_last.ckpt` | 在候选中选择已完成轮数最大的权重 |
+| 3 | `policy_best.ckpt` | 最后回退；参考历史中的 best_epoch，没有历史时从 0 计数 |
+
+完整断点必须和原目录 `dataset_stats.pkl`、`dataset_split.json` 一起保留；还应保留模型配置与训练历史。只有模型权重不能满足当前续训校验。
+
+恢复流程会校验训练/验证文件列表和 qpos/action 均值、标准差。原数据、划分、seed、train_ratio 和 max_episodes 变化可能导致拒绝恢复。文件列表检查含路径，因此把数据移动到新路径也可能触发不一致。不要通过删除统计或分割文件绕过校验；迁移时保留路径或按受控方式同步更新元数据。
+
+当前校验不是整份 RGB-D 数据的内容哈希。即便图像被修改而关节统计不变，也不能认为续训数据一致；应自行保持原数据不可变。
+
+恢复前，在模型目录 `resume_backups/时间戳/` 备份旧 best/last、历史、模型配置、归一化和划分。这是部分恢复资料备份，不是整个数据集或完整目录备份。
+
+完整断点通过临时文件加 `os.replace()` 单文件原子替换。模型文件与 JSON 历史是分别写入的，不是跨文件事务；恢复器优先使用完整断点内的历史。
+
+旧权重兼容恢复会显示优化器重建警告，不能称为与原训练轨迹完全一致的恢复。`training_state.ckpt` 用于训练恢复；部署默认仍使用 `policy_best.ckpt`，不要把完整状态文件直接当成策略 state_dict。
+
+### 13.9 命令行继续训练
+
+继续至指定总轮数：
+
+```powershell
+conda activate piper_act
+Set-Location D:\piper_act\act
+python .\train_piper_act_dual_rgbd_global_v7.py `
+  --dataset_dir "D:\piper_act\Dataset\stand_bottle_dual_rgbd" `
+  --ckpt_dir "D:\piper_act\checkpoints\stand_bottle_v7_run01" `
+  --resume `
+  --num_epochs 100
+```
+
+在已保存进度上追加 50 轮：
+
+```powershell
+python .\train_piper_act_dual_rgbd_global_v7.py `
+  --dataset_dir "D:\piper_act\Dataset\stand_bottle_dual_rgbd" `
+  --ckpt_dir "D:\piper_act\checkpoints\stand_bottle_v7_run01" `
+  --resume `
+  --additional_epochs 50
+```
+
+`--additional_epochs` 正数优先按“已完成 + 追加”计算目标；该参数需要 `--resume`。不要将命令中的路径替换为新空模型目录后期待自动找到旧断点。
+
+### 13.10 前端到训练器的开发路径
+
+| 文件 | 新增职责 |
+| --- | --- |
+| `frontend/index.html` | `trainingResumeControls`、模式 select、追加轮数输入、目标总轮数与停止按钮文案 |
+| `frontend/src/js/stage-layout.js` | `updateTrainingModeFields()` 控制显示、required、disabled 与模式说明；把训练控件移入顶部工具栏 |
+| `frontend/src/js/console.js` | 用 `form.elements` 收集控件，支持布局移动后的表单关联；训练状态与停止提示 |
+| `frontend/src/css/console.css` | 训练模式工具栏、隐藏字段和窄屏布局 |
+| `workflow.py` | 校验 new/resume/extend；转为 `--resume`、`--additional_epochs`；保护已有模型目录 |
+| `web_app.py` | 为训练子进程设置停止文件及环境变量 |
+| `training_entry.py` | 续训跳过新的深度统计预处理 |
+| `act/training_resume.py` | 选择、校验、恢复与保存断点 |
+| `act/train_piper_act_dual_rgbd_global_v7.py` | 从已完成轮数进入循环，每轮保存，轮末停止，恢复历史指标 |
+
+模式沿用 `POST /api/training/start`，没有新增独立 resume API。例如在原任务已选择、目录已核对后，追加请求体包含：
+
+```json
+{
+  "training_mode": "extend",
+  "additional_epochs": 50
+}
+```
+
+其它参数仍由现有训练参数规范转换；前端请求使用 `Content-Type: application/json` 和 `X-Console-Request: 1`，并遵守同源检查。
+
+布局模块将部分输入移到 form 元素外，使用 `form="trainingForm"` 保持归属。后续开发必须通过 `form.elements` 或 `FormData(form)` 处理关联控件；仅用 `form.querySelectorAll()` 会遗漏外部控件。隐藏且禁用字段应不进入请求。
+
+修改页面后运行 `npm run build`，重启旧后端以加载新的 Python 代码，再刷新页面；只构建前端不会更新已运行的后端进程。双击启动器可能复用现有健康服务，不等于自动完成后端热更新。
+
+项目说明跳转：[继续训练说明](https://github.com/liarzhip/PIPER_ACT/blob/main/上位机/继续训练说明.md) · [恢复实现](https://github.com/liarzhip/PIPER_ACT/blob/main/act/training_resume.py)。
+
+官方开发文档：[HTML form 关联属性](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Attributes/form) · [HTMLFormElement.elements](https://developer.mozilla.org/en-US/docs/Web/API/HTMLFormElement/elements) · [PyTorch Checkpoints](https://docs.pytorch.org/tutorials/recipes/recipes/saving_and_loading_a_general_checkpoint.html) · [torch.load](https://docs.pytorch.org/docs/stable/generated/torch.load.html)。断点与 pickle 统计仅加载可信来源的本地训练文件。
 
 ## 14. 二次开发与双臂扩展
 
@@ -967,6 +1084,16 @@ npm run build
 ```
 
 仓库测试主要使用模拟或桩对象；通过它们不证明真实相机、固件和 CAN 已通过验证。无硬件网页演示用于软件链验证，不能替代主从反馈与真实 RGB-D 采集。
+
+续训回归测试为 `tests/test_training_resume.py`，覆盖完整状态的优化器延续、旧断点选择、目标轮数与数据划分拒绝。该测试目前在源码中写入 `D:/piper_act` 路径；不同目录可显式补充 Python 搜索路径：
+
+```powershell
+Set-Location D:\piper_act\上位机
+$env:PYTHONPATH = "D:\piper_act\act;D:\piper_act\上位机"
+python -m unittest discover -s tests -p test_training_resume.py -v
+```
+
+人工检查三种模式的字段切换；从头模式已有权重应报错；从保存的 30 轮继续到 100/追加到 80；停止后检查完整断点；恢复时核对日志、曲线和剩余轮次。恢复会读取保存的参数，测试时应检查其实际生效值。
 
 ### 15.2 分阶段验收
 
@@ -1034,7 +1161,7 @@ nvidia-smi | Out-File -Encoding utf8 .\experiment_records\gpu.txt
 | 文档 | 来源 | 用途 |
 | --- | --- | --- |
 | [PIPER_ACT 仓库](https://github.com/liarzhip/PIPER_ACT/tree/main) | 本项目 | 当前工程实现 |
-| [固定提交快照](https://github.com/liarzhip/PIPER_ACT/tree/38e243709516cdf5fb3851067b989db965e8f0e0) | 本项目 | 本指南版本依据 |
+| [固定提交快照](https://github.com/liarzhip/PIPER_ACT/tree/636d94fb64c81260572671f6d95bcfdac164e573) | 本项目 | 本指南版本依据 |
 | [ACT 官方实现](https://github.com/tonyzhaozh/act) | 算法作者 | ACT、仿真和训练参考 |
 | [ALOHA 项目](https://tonyzhaozh.github.io/aloha/) | 算法作者 | 方法、硬件与演示 |
 | [ACT 原论文](https://arxiv.org/abs/2304.13705) | 算法作者 | CVAE、action chunking 与时序融合 |
@@ -1106,6 +1233,6 @@ RealSense 官方仓库目前在 `realsenseai` 组织下，本指南使用新地�
 
 ### 18.3 本指南验证范围
 
-本次重新获取 main 提交，确认核心采集、深度统计与验证文件齐全；检查新增采集器的 CAN 初始化、单位转换、HOLD、按键、时间字段与退出保存，检查统计器的训练集划分和归一化，核对验证器与网页双相机检查的分工。训练、执行、网页代码与此前核对的版本一致。
+本次以 main 提交 `636d94fb64c81260572671f6d95bcfdac164e573` 补充新增训练方式、轮末停止、完整状态恢复、表单关联与启动器迁移，并更新训练与故障章节。原硬件、数据、模型与官方链接导航保留；新的命令参数与恢复行为按源码核对。
 
-文中的 Python 示例按语法检查，采集、统计、验证、训练与执行命令按实际解析器核对；未连接 PiPER-X、Orbbec、RealSense 或 CAN，未进行 CUDA 训练、前端构建或仓库测试实跑。真实设备兼容性、任务成功率与控制平滑度需要按第 15 节逐阶段验收。
+已完成文档代码块与命令参数检查，以及不依赖硬件的训练命令转换验证。尝试参数集成测试时，当前检查环境缺少 OpenCV，测试在导入阶段未执行；没有报告全套测试通过。没有连接机械臂和相机，没有执行 GPU 训练、浏览器交互或前端构建。新增恢复单元测试需在依赖完整的项目环境运行。
