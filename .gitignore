@@ -23,3 +23,7 @@ __pycache__/
 *.pyd
 .env
 .venv/
+
+# piper任务缓存
+.piper_tasks.json
+.piper_runtime
